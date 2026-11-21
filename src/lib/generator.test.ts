@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { generateProject } from './generator';
-import { createDemoWorkflow } from './nodes';
+import { computeRoutes, generateProject } from './generator';
+import { createDemoWorkflow, createNode } from './nodes';
+import { runTick } from '../simulation/engine';
 import { createZip } from './zip';
 
 const byPath = (files: ReturnType<typeof generateProject>) => Object.fromEntries(files.map((f) => [f.path, f.content]));
@@ -30,7 +31,8 @@ describe('generateProject', () => {
     const files = byPath(generateProject('Demo', nodes, edges));
     const config = JSON.parse(files['simulator/config.json']);
     expect(config.sensors).toHaveLength(1);
-    expect(config.rules[0].sensor).toBe('demo-sensor');
+    expect(config.rules[0]).toMatchObject({ id: 'demo-logic', threshold: 70 });
+    expect(config.routes).toContainEqual({ sensor: 'demo-sensor', via: ['demo-logic'], target: 'mqtt' });
     expect(JSON.parse(files['workflow.json']).schema).toBe('nexa-forge/workflow');
   });
 
@@ -84,3 +86,62 @@ describe('generateProject', () => {
     expect(view.getUint16(eocd + 10, true)).toBe(files.length);
   });
 });
+
+describe('computeRoutes (generated simulator follows the editor model)', () => {
+  const fixed = (threshold: number) => {
+    const wf = createDemoWorkflow();
+    wf.nodes[0].data.config = { ...wf.nodes[0].data.config, min: 50, max: 50.0001, pattern: 'random' };
+    wf.nodes[1].data.config = { operator: '>', threshold };
+    return wf;
+  };
+  const nodeOf = (nodes: ReturnType<typeof createDemoWorkflow>['nodes'], kind: string) => nodes.find((n) => n.data.kind === kind);
+
+  it('routes MQTT and the API behind the Logic block in the example', () => {
+    const { nodes, edges } = fixed(10);
+    const routes = computeRoutes(nodes, edges, nodeOf(nodes, 'mqtt'), nodeOf(nodes, 'cloudApi'));
+    expect(routes).toEqual([
+      { sensor: 'demo-sensor', via: ['demo-logic'], target: 'mqtt' },
+      { sensor: 'demo-sensor', via: ['demo-logic'], target: 'api' },
+    ]);
+  });
+
+  it('creates no routes for blocks that are not connected', () => {
+    const s = createNode('sensor', { x: 0, y: 0 }, 's');
+    const m = createNode('mqtt', { x: 1, y: 0 }, 'm');
+    const api = createNode('cloudApi', { x: 2, y: 0 }, 'api');
+    const lonely = createNode('logic', { x: 3, y: 0 }, 'l');
+    const routes = computeRoutes([s, m, api, lonely], [{ id: 'e', source: 's', target: 'm' }], m, api);
+    expect(routes).toEqual([{ sensor: 's', via: [], target: 'mqtt' }]);
+  });
+
+  it('terminates on cycles', () => {
+    const { nodes, edges } = fixed(10);
+    const loop = { id: 'loop', source: 'demo-mqtt', target: 'demo-logic' };
+    expect(() => computeRoutes(nodes, [...edges, loop], nodeOf(nodes, 'mqtt'), nodeOf(nodes, 'cloudApi'))).not.toThrow();
+  });
+
+  it('agrees with the editor simulation about what reaches MQTT and the API', () => {
+    for (const threshold of [10, 49, 99]) {
+      const { nodes, edges } = fixed(threshold);
+      const mqtt = nodeOf(nodes, 'mqtt');
+      const api = nodeOf(nodes, 'cloudApi');
+      const sim = runTick(nodes, edges, 1);
+      const value = sim.readings['demo-sensor'];
+      const passes = value > threshold;
+      const reaches = (target: 'mqtt' | 'api') =>
+        computeRoutes(nodes, edges, mqtt, api).some((r) => r.target === target && r.via.every(() => passes));
+      expect(reaches('mqtt')).toBe(sim.messages.some((m) => m.message.startsWith('PUBLISH')));
+      expect(reaches('api')).toBe(sim.messages.some((m) => m.message.startsWith('POST')));
+    }
+  });
+
+  it('falls back to defaults instead of writing invalid numbers into the config', () => {
+    const { nodes, edges } = createDemoWorkflow();
+    nodes[0].data.config.min = '';
+    nodes[1].data.config.threshold = '';
+    const config = JSON.parse(byPath(generateProject('X', nodes, edges))['simulator/config.json']);
+    expect(config.sensors[0].min).toBe(20);
+    expect(config.rules[0].threshold).toBe(70);
+  });
+});
+

@@ -1,4 +1,5 @@
-import type { BlockKind, GeneratedFile, NexaEdge, NexaNode } from '../types';
+import { BLOCKS } from '../blocks';
+import type { BlockKind, ConfigValue, GeneratedFile, NexaEdge, NexaNode } from '../types';
 import { slugify } from './files';
 import { buildWorkflow } from './workflow';
 
@@ -6,6 +7,57 @@ const ofKind = (nodes: NexaNode[], kind: BlockKind) => nodes.filter((n) => n.dat
 
 /** Quotes a value as a YAML scalar. JSON strings are valid YAML, so user text can never break out of its field. */
 const yamlString = (value: unknown) => JSON.stringify(String(value));
+
+/** A numeric setting, falling back to the block default when the value is empty or not a number. */
+function num(kind: BlockKind, key: string, value: ConfigValue | undefined): number {
+  const n = value === '' || value === undefined ? Number.NaN : Number(value);
+  return Number.isFinite(n) ? n : Number(BLOCKS[kind].defaults[key]);
+}
+
+export interface Route {
+  sensor: string;
+  /** Logic blocks the data must pass, in order, before it reaches the target. */
+  via: string[];
+  target: 'mqtt' | 'api';
+}
+
+/**
+ * Mirrors the editor simulation: data flows from each sensor along the connections, and only reaches
+ * the MQTT / Cloud API block when every Logic block on the way is satisfied. Disconnected blocks get no routes.
+ */
+export function computeRoutes(nodes: NexaNode[], edges: NexaEdge[], mqtt?: NexaNode, api?: NexaNode): Route[] {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const routes: Route[] = [];
+  const seen = new Set<string>();
+  let budget = 20000; // keeps pathological graphs from taking forever
+
+  const walk = (node: NexaNode, sensor: string, via: string[], path: Set<string>): void => {
+    if (path.has(node.id) || budget-- <= 0) return;
+    const nextPath = new Set(path).add(node.id);
+    let nextVia = via;
+    if (node.data.kind === 'logic') nextVia = [...via, node.id];
+    if (node === mqtt || node === api) {
+      const target = node === mqtt ? 'mqtt' : 'api';
+      const key = `${sensor}|${target}|${via.join(',')}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        routes.push({ sensor, via, target });
+      }
+    }
+    for (const e of edges) {
+      const next = e.source === node.id ? byId.get(e.target) : undefined;
+      if (next) walk(next, sensor, nextVia, nextPath);
+    }
+  };
+
+  for (const s of nodes.filter((n) => n.data.kind === 'sensor')) {
+    for (const e of edges) {
+      const next = e.source === s.id ? byId.get(e.target) : undefined;
+      if (next) walk(next, s.id, [], new Set([s.id]));
+    }
+  }
+  return routes;
+}
 
 function simulatorPy(): string {
   return `"""NEXA Forge virtual sensor simulator (generated).
@@ -38,8 +90,15 @@ OPS = {
 }
 
 
+def number(value, default=0.0):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def read_sensor(sensor, tick):
-    lo, hi = float(sensor["min"]), float(sensor["max"])
+    lo, hi = number(sensor["min"]), number(sensor["max"])
     if hi <= lo:
         return lo
     mid, amp = (lo + hi) / 2, (hi - lo) / 2
@@ -95,11 +154,16 @@ def post_alert(payload):
 def main():
     client = connect_mqtt()
     topic = CONFIG["mqtt"]["topic"] if CONFIG["mqtt"] else None
+    rules = {rule["id"]: rule for rule in CONFIG["rules"]}
     tick = 0
     while True:
         tick += 1
         for sensor in CONFIG["sensors"]:
             value = read_sensor(sensor, tick)
+            # Same model as the NEXA Forge editor: a route delivers data only if every Logic block on it passes.
+            passed = {rid: OPS[rule["operator"]](value, number(rule["threshold"])) for rid, rule in rules.items()}
+            routes = [route for route in CONFIG["routes"] if route["sensor"] == sensor["id"]]
+            open_targets = {route["target"] for route in routes if all(passed.get(rid, False) for rid in route["via"])}
             payload = {
                 "sensor": sensor["name"],
                 "type": sensor["sensorType"],
@@ -107,13 +171,14 @@ def main():
                 "unit": sensor["unit"],
                 "ts": datetime.now(timezone.utc).isoformat(),
             }
-            for rule in CONFIG["rules"]:
-                if rule["sensor"] in (None, sensor["id"]) and OPS[rule["operator"]](value, float(rule["threshold"])):
-                    payload["alert"] = rule["name"]
-                    post_alert(payload)
+            triggered = [rules[rid]["name"] for rid in dict.fromkeys(rid for route in routes for rid in route["via"]) if passed.get(rid)]
+            if triggered:
+                payload["alert"] = ", ".join(triggered)
             print(json.dumps(payload), flush=True)
-            if client and topic:
-                client.publish(topic, json.dumps(payload), qos=int(CONFIG["mqtt"].get("qos", 0)))
+            if "mqtt" in open_targets and client and topic:
+                client.publish(topic, json.dumps(payload), qos=int(number(CONFIG["mqtt"].get("qos", 0))))
+            if "api" in open_targets:
+                post_alert(payload)
         time.sleep(1)
 
 
@@ -130,15 +195,16 @@ export function generateProject(name: string, nodes: NexaNode[], edges: NexaEdge
   const docker = ofKind(nodes, 'docker')[0];
   const k8s = ofKind(nodes, 'kubernetes')[0];
 
-  const upstreamSensor = (logicId: string): string | null => {
-    const edge = edges.find((e) => e.target === logicId);
-    const source = nodes.find((n) => n.id === edge?.source);
-    return source && source.data.kind === 'sensor' ? source.id : null;
-  };
-
   const simConfig = {
-    sensors: sensors.map((s) => ({ id: s.id, name: s.data.label, ...s.data.config })),
-    rules: logic.map((l) => ({ name: l.data.label, sensor: upstreamSensor(l.id), ...l.data.config })),
+    sensors: sensors.map((s) => ({
+      id: s.id,
+      name: s.data.label,
+      ...s.data.config,
+      min: num('sensor', 'min', s.data.config.min),
+      max: num('sensor', 'max', s.data.config.max),
+    })),
+    rules: logic.map((l) => ({ id: l.id, name: l.data.label, ...l.data.config, threshold: num('logic', 'threshold', l.data.config.threshold) })),
+    routes: computeRoutes(nodes, edges, mqtt, api),
     mqtt: mqtt ? { ...mqtt.data.config } : null,
     api: api ? { ...api.data.config } : null,
   };

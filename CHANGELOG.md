@@ -22,6 +22,11 @@ All notable changes to NEXA Forge are recorded here. The project is an early-sta
 - Status label changed from "Prototype" to "Developer preview".
 - Toolbar buttons "Clear" now have distinct accessible names.
 
+### Fixed
+- Generated simulator now follows the editor's data flow: MQTT publishing and API alerts happen only when every Logic block on the route passes. Previously it published every reading to MQTT, and a disconnected Logic block triggered API alerts for all sensors.
+- Generated simulator no longer crashes on empty numeric settings; invalid numbers fall back to the block defaults.
+- Autosave no longer fires (or shows "Saving") when only the selection changes.
+
 ### Removed
 - Unused Vite template files (`src/App.css`, template images, `public/icons.svg`).
 
