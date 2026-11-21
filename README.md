@@ -40,11 +40,11 @@ There is no backend. All state lives in the browser and is lost on refresh.
 
 ## Installation (Git Bash)
 
-Prerequisites: [Node.js](https://nodejs.org/) (a current LTS version) and Git.
+Prerequisites: [Node.js](https://nodejs.org/) (version 20.19+ or 22.12+) and Git.
 
 ```bash
-git clone https://github.com/<your-username>/<repository-name>.git
-cd <repository-name>
+git clone https://github.com/Perera1325/nexa-forge.git
+cd nexa-forge
 npm install
 ```
 
@@ -61,7 +61,7 @@ Other scripts:
 ```bash
 npm run build     # type-check and create a production build in dist/
 npm run preview   # serve the production build locally
-npm run lint      # run ESLint (if configured in your checkout)
+npm run lint      # run oxlint (static analysis)
 ```
 
 ## Try it
@@ -103,7 +103,7 @@ Contributions, bug reports and ideas are welcome, though the project is early an
 1. Open an issue to discuss larger changes before starting work.
 2. Fork the repository and create a branch (`git checkout -b feature/short-description`).
 3. Keep changes focused. Follow the existing TypeScript and file structure.
-4. Make sure `npm run build` passes before opening a pull request.
+4. Make sure `npm run build` and `npm run lint` pass before opening a pull request.
 5. Describe what changed and how you tested it.
 
 Please be respectful and constructive in all discussions.
