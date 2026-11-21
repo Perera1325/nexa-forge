@@ -9,9 +9,12 @@ src/
   lib/
     workflow.ts            Workflow data model, export, import (parseWorkflow) and validation
     storage.ts             Load/save the project in browser storage (storage is injectable for tests)
-    generator.ts           Turns a workflow into starter project files
+    generator.ts           Turns a workflow into starter project files and its README
+    guide.ts               Remembers that the first-workflow guide was closed
     zip.ts, files.ts       Dependency-free ZIP writer and download helpers
     nodes.ts               Node factory and the example workflow
+  examples/index.ts        Example workflow gallery data (built with the same node factory as the editor)
+  guide/steps.ts           Steps of the optional first-workflow guide
   engine/                  Workflow execution engine: pure TypeScript, no React or DOM (see "Execution engine")
     types.ts               Graph, events, errors, node status, step outputs
     plan.ts                Validation and execution order (buildPlan)
@@ -48,6 +51,12 @@ Layers, from data to screen: **data model** (`types.ts`, `blocks.ts`, `lib/workf
 - **Adapters.** The only place a block touches "the outside world". The default adapters are simulated: they return a record of what would be published, requested or prepared, with `simulated: true`, and nothing opens a connection. A real adapter would have to be written and passed to `createEngine({ adapters })` explicitly; nothing creates one by default.
 - **Runner.** `createRunner()` drives an engine with an injected scheduler. `start()` returns false if a run is active, so a second timer cannot exist; `stop()` and `dispose()` clear the timer; an unexpected engine error stops the run and calls `onError`.
 - **UI.** `useSimulation` creates one runner per mounted component and disposes it on unmount. `presenter.ts` maps events to Event Log rows: debug events are hidden, and errors are shown with the existing warning style and an "Error:" prefix.
+
+## Examples and onboarding
+`src/examples` holds the example workflows as plain builders that return nodes and edges in the normal workflow model, so loading one is the same as importing a file. A test checks that every example uses supported blocks, has valid settings and connections, produces no validation or planning issues, survives export/import and save/restore, simulates without problems and generates a project. The first-workflow guide (`components/Guide.tsx`, text in `guide/steps.ts`) is a non-blocking card; closing it is remembered in browser storage (`lib/guide.ts`).
+
+## Generated projects
+`lib/generator.ts` writes the files listed in the Studio preview. The Python simulator reads `simulator/config.json` and is offline by default: it contacts an MQTT broker or an API only when started with `--send-mqtt` or `--send-api`. The README is built from the workflow (its sensors, data routes and settings) and states what is simulated.
 
 ## Extending
 Future integration targets (ESP32/Arduino, embedded Linux, edge AI platforms, MQTT, AWS, OpenChoreo) are not implemented. The intended extension points are new entries in `blocks.ts` and new generator targets in `lib/generator.ts`.

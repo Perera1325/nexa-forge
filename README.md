@@ -23,6 +23,7 @@ The long-term vision is one visual workspace where an engineer can describe that
 - **Inspector:** edit a block's name and configuration, with hints and inline validation, and see its connections.
 - **Workflow check:** structural and configuration validation. Clicking an issue jumps to the block.
 - **Mock simulation:** virtual sensors generate sine, random or ramp data. Data flows along the connections, Logic blocks gate it on a condition, and live values, sparklines and an event log update every second.
+- **Examples and guide:** a gallery of example workflows (smart temperature monitoring, energy monitoring and alerting, an edge-to-cloud pipeline) and an optional guide for a first workflow. Everything is simulated; no hardware is needed.
 - **Execution engine:** the simulation runs on a separate TypeScript engine (no React) that plans a valid execution order, reports invalid connections, loops and settings, records a status per block and sends events to the Event Log. See [ARCHITECTURE.md](ARCHITECTURE.md).
 - **Projects in your browser:** the project autosaves to browser storage and is restored after a refresh. Status shows Saved, Saving or Save failed. Ctrl+S saves immediately. New project and confirmations protect against accidental loss.
 - **Workflow JSON export and import:** versioned JSON. Imports are validated, and malformed or newer-format files are rejected with a clear message.
@@ -63,15 +64,16 @@ npm run typecheck   # TypeScript only
 
 ## Try it
 
-1. Click **Run simulation** to stream mock data through the example workflow, then **Stop simulation**.
-2. Select a block and edit its settings in the Inspector.
-3. Click **Export JSON**, then use **Import** to load a workflow file back.
-4. Click **Generate project** to preview and download the starter project.
-5. Refresh the page. Your project is restored from browser storage.
+1. Follow the optional guide that appears on a first visit (reopen it with **Guide**), or click **Examples** and load one of the example workflows.
+2. Click **Run simulation** to stream mock data through the workflow, then **Stop simulation**.
+3. Select a block and edit its settings in the Inspector.
+4. Click **Export JSON**, then use **Import** to load a workflow file back.
+5. Click **Generate project** to preview and download the starter project. Its README explains how to run it.
+6. Refresh the page. Your project is restored from browser storage.
 
 ## Documentation
 
-- The in-app documentation at `/docs`: quick start, editor, simulation, export, generation, limitations and troubleshooting
+- The in-app documentation at `/docs`: quick start, first-workflow tutorial, example workflows, editor, simulation, export, generation, limitations and troubleshooting
 - [ARCHITECTURE.md](ARCHITECTURE.md): code structure, data model and extension points
 - [CHANGELOG.md](CHANGELOG.md)
 - [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)

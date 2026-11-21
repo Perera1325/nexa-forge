@@ -1,4 +1,6 @@
 import { BLOCKS, BLOCK_ORDER } from '../blocks';
+import { EXAMPLES } from '../examples';
+import { GUIDE_STEPS } from '../guide/steps';
 import { Link } from '../Link';
 import { CodeBlock, Layout } from './Layout';
 import { ARCHITECTURE_URL, CHANGELOG_URL, CLONE_URL, ISSUES_URL, REPO_URL } from './links';
@@ -6,6 +8,8 @@ import { ARCHITECTURE_URL, CHANGELOG_URL, CLONE_URL, ISSUES_URL, REPO_URL } from
 const TOC: Array<[string, string]> = [
   ['overview', 'Overview'],
   ['quick-start', 'Quick start'],
+  ['first-workflow', 'Tutorial: your first workflow'],
+  ['examples', 'Example workflows'],
   ['prerequisites', 'Prerequisites'],
   ['installation', 'Installation'],
   ['local-development', 'Local development'],
@@ -26,6 +30,26 @@ const SCRIPTS: Array<[string, string]> = [
   ['npm test', 'Run the unit tests once (Vitest).'],
   ['npm run typecheck', 'Run the TypeScript check only.'],
 ];
+
+/** The connections of an example as readable "A → B" lines, read from the example itself so the docs cannot drift from it. */
+function describeConnections(example: (typeof EXAMPLES)[number]): string[] {
+  const { nodes, edges } = example.build();
+  const label = (id: string) => nodes.find((n) => n.id === id)?.data.label ?? id;
+  return edges.map((e) => `${label(e.source)} → ${label(e.target)}`);
+}
+
+/** The settings that make an example behave the way it does, as short phrases. */
+function describeSettings(example: (typeof EXAMPLES)[number]): string[] {
+  const { nodes } = example.build();
+  return nodes.flatMap((n) => {
+    const c = n.data.config;
+    if (n.data.kind === 'sensor') return [`${n.data.label}: ${c.sensorType}, ${c.min} to ${c.max} ${c.unit}, ${c.pattern} pattern`];
+    if (n.data.kind === 'logic') return [`${n.data.label}: passes when value ${c.operator} ${c.threshold}`];
+    if (n.data.kind === 'mqtt') return [`${n.data.label}: topic ${c.topic}`];
+    if (n.data.kind === 'cloudApi') return [`${n.data.label}: ${c.method} ${c.url}`];
+    return [];
+  });
+}
 
 export function Docs() {
   return (
@@ -80,8 +104,9 @@ export function Docs() {
                 <strong>Open Studio</strong> or go straight to <code>http://localhost:5173/studio</code>.
               </li>
               <li>
-                <strong>Load the example workflow.</strong> On a first visit the example is already on the canvas. At any time, click <strong>Example</strong> in
-                the toolbar above the canvas to replace the canvas with it (Studio asks for confirmation if the canvas is not empty). (An empty canvas shows a <strong>Load example workflow</strong> button.)
+                <strong>Look around, or load an example.</strong> On a first visit a short, optional guide appears over the canvas and a basic example is already
+                loaded. Click <strong>Examples</strong> in the toolbar above the canvas to pick one of the example workflows (Studio asks for confirmation if the
+                canvas is not empty). <strong>Guide</strong> reopens the guide at any time.
               </li>
               <li>
                 <strong>Run the simulation.</strong> Click <strong>Run simulation</strong> in the top bar. Watch the Live Data panel and the Event Log. Click{' '}
@@ -91,6 +116,80 @@ export function Docs() {
                 <strong>Export the workflow.</strong> Click <strong>Export JSON</strong>, then <strong>Download JSON</strong> or <strong>Copy</strong>.
               </li>
             </ol>
+          </section>
+
+          <section id="first-workflow" aria-labelledby="fw-h">
+            <h2 id="fw-h">Tutorial: your first workflow</h2>
+            <p>
+              This takes about five minutes and builds a small temperature alert from nothing. The in-app guide (<strong>Guide</strong> in the toolbar) walks
+              through the same ideas in {GUIDE_STEPS.length} short steps.
+            </p>
+            <ol className="doc-steps">
+              <li>
+                <strong>Start empty.</strong> Click <strong>New</strong> and confirm. The canvas is empty.
+              </li>
+              <li>
+                <strong>Add a Virtual Sensor.</strong> Drag <em>Virtual Sensor</em> from the palette onto the canvas (or click it in the palette). It is selected
+                right away. In the Inspector, set <em>Unit</em> to <code>°C</code>, <em>Minimum</em> to <code>15</code>, <em>Maximum</em> to <code>40</code> and{' '}
+                <em>Data pattern</em> to <code>sine</code>.
+              </li>
+              <li>
+                <strong>Add a Logic block.</strong> Add <em>Logic</em>, set <em>Operator</em> to <code>&gt;</code> and <em>Threshold</em> to <code>30</code>. It
+                will pass on only the warm readings.
+              </li>
+              <li>
+                <strong>Add an MQTT block.</strong> Add <em>MQTT</em> and leave its defaults, or set a topic such as <code>building/room1/temperature</code>.
+              </li>
+              <li>
+                <strong>Connect them.</strong> Drag from the handle on the right of the sensor to the handle on the left of the Logic block, then from the Logic
+                block to the MQTT block. The pill above the canvas should say <em>Workflow valid</em>; if not, click it and follow the issues.
+              </li>
+              <li>
+                <strong>Run the simulation.</strong> Click <strong>Run simulation</strong>. Live Data shows the readings. In the Event Log, “Condition met” lines
+                appear while the value is above 30, each followed by an MQTT <code>PUBLISH … · simulated</code> line. Click <strong>Stop</strong>.
+              </li>
+              <li>
+                <strong>Export it.</strong> Click <strong>Export JSON</strong> and <strong>Download JSON</strong>. You can load the file again with{' '}
+                <strong>Import</strong>.
+              </li>
+              <li>
+                <strong>Generate a project.</strong> Click <strong>Generate project</strong>, open <code>README.md</code> in the preview, then download the zip and
+                follow its instructions (see “Generating a project”).
+              </li>
+            </ol>
+            <p>
+              The finished workflow is almost the same as the <em>Smart Temperature Monitoring</em> example below, which also adds a Cloud API block.
+            </p>
+          </section>
+
+          <section id="examples" aria-labelledby="ex-h">
+            <h2 id="ex-h">Example workflows</h2>
+            <p>
+              Click <strong>Examples</strong> in the Studio toolbar, then <strong>Load example</strong>. Loading replaces the canvas after confirmation and sets
+              the project name. All examples are software-only: the sensors are virtual, and the workflows validate without issues and run in the simulation.
+            </p>
+            {EXAMPLES.map((example) => (
+              <div key={example.id} className="doc-example">
+                <h3>{example.title}</h3>
+                <p>{example.summary}</p>
+                <p>
+                  <strong>Connections:</strong>
+                </p>
+                <ul>
+                  {describeConnections(example).map((line) => (
+                    <li key={line}>{line}</li>
+                  ))}
+                </ul>
+                <p>
+                  <strong>Key settings:</strong>
+                </p>
+                <ul>
+                  {describeSettings(example).map((line) => (
+                    <li key={line}>{line}</li>
+                  ))}
+                </ul>
+              </div>
+            ))}
           </section>
 
           <section id="prerequisites" aria-labelledby="pre-h">
@@ -189,7 +288,7 @@ export function Docs() {
             </ol>
             <p>
               The toolbar also has <strong>New</strong> (start an empty project), <strong>Import</strong> (load a workflow <code>.json</code> file),{' '}
-              <strong>Example</strong> and <strong>Clear</strong>. Each asks for confirmation before replacing the canvas. Your project autosaves to this browser;
+              <strong>Examples</strong> (the example gallery), <strong>Guide</strong> (the optional first-workflow guide) and <strong>Clear</strong>. Replacing the canvas always asks for confirmation before replacing the canvas. Your project autosaves to this browser;
               press Ctrl+S to save immediately.
             </p>
             <h3>Blocks</h3>
@@ -235,6 +334,9 @@ export function Docs() {
             <p>
               Everything is simulated. The MQTT and Cloud API blocks only log what they would send, and the Docker and Kubernetes blocks log a one-time preparation message when the run starts. Nothing connects to a broker or API, builds an image or touches a cluster. A block with invalid settings is reported once in the Event Log as an error and does not run, and blocks that are not connected to a sensor are reported and skipped. Click <strong>Stop</strong> to end the run.
             </p>
+            <p>
+              Events marked <code>· simulated</code> stand for an action that would happen in a real deployment. The editor never performs it.
+            </p>
           </section>
 
           <section id="export" aria-labelledby="exp-h">
@@ -245,7 +347,7 @@ export function Docs() {
               not valid JSON, not a NEXA Forge workflow, over 1 MB, or from a newer format version are rejected with a message, and invalid connections are
               dropped with a warning.
             </p>
-            <p>Browser storage is not a backup. Export JSON to keep a copy of anything you care about.</p>
+            <p>Browser storage is not a backup. Export JSON to keep a copy of anything you care about. Every example workflow exports and imports without changes.</p>
           </section>
 
           <section id="generate" aria-labelledby="gen-h">
@@ -256,8 +358,12 @@ export function Docs() {
             </p>
             <ul>
               <li>
-                <code>workflow.json</code>, <code>simulator/simulator.py</code>, <code>simulator/config.json</code>, <code>requirements.txt</code> and a{' '}
-                <code>README.md</code>
+                <code>README.md</code> — what is simulated, the folder structure, your workflow’s data routes, run instructions, the current configuration and its
+                options, and limitations
+              </li>
+              <li>
+                <code>workflow.json</code>, <code>simulator/simulator.py</code>, <code>simulator/config.json</code>, <code>requirements.txt</code> and{' '}
+                <code>.gitignore</code>
               </li>
               <li>
                 <code>Dockerfile</code> and <code>docker-compose.yml</code> (with a local MQTT broker), if the workflow has a Docker block
@@ -268,12 +374,22 @@ export function Docs() {
             </ul>
             <p>
               The generated simulator follows the same routing as the editor: MQTT and API output happen only when every Logic block on the route passes. Its
-              settings are read from <code>config.json</code>. Run it with:
+              settings are read from <code>config.json</code>. It needs Python 3.9 or newer. Run it like this:
             </p>
-            <CodeBlock label="generated project commands" code={'pip install -r requirements.txt\npython simulator/simulator.py'} />
+            <CodeBlock
+              label="generated project commands"
+              code={'python -m venv .venv\nsource .venv/bin/activate   # Windows PowerShell: .venv\\Scripts\\Activate.ps1\npip install -r requirements.txt\npython simulator/simulator.py --ticks 10 --interval 0.5'}
+            />
             <p>
-              Generated projects are starter templates. They have not been security-reviewed or tested against a production broker, registry or cluster. Review
-              every file before using it anywhere real.
+              By default it only prints one JSON reading per sensor per step. It contacts nothing until you pass <code>--send-mqtt</code> (publish to the MQTT
+              broker in <code>config.json</code>, which needs <code>paho-mqtt</code> and a reachable broker) or <code>--send-api</code> (send requests to the API
+              URL in <code>config.json</code>). <code>--ticks N</code> stops after N steps and <code>--interval S</code> sets the seconds between steps. The{' '}
+              <code>MQTT_BROKER</code> and <code>API_URL</code> environment variables override the destinations. The example API URLs are placeholders.
+            </p>
+            <p>
+              The sensor readings are always simulated. The generated simulator code was run with Python and its API sending was checked against a local test
+              server, but generated projects have not been tested against a real MQTT broker, container registry or Kubernetes cluster, and they have not been
+              security-reviewed. Review every file before using it anywhere real.
             </p>
           </section>
 
@@ -282,7 +398,9 @@ export function Docs() {
             <ul>
               <li>Simulation only. No real sensors, microcontrollers, firmware or hardware.</li>
               <li>The editor’s MQTT and Cloud API blocks make no network calls.</li>
-              <li>Generated projects are untested starter templates; the Kubernetes manifests expect an MQTT broker they do not deploy.</li>
+              <li>Generated projects are starter templates, untested against real brokers, registries and clusters; the Kubernetes manifests expect an MQTT broker they do not deploy and an image you have built and pushed yourself.</li>
+              <li>The generated simulator needs Python and, for MQTT publishing, the <code>paho-mqtt</code> package. It does not support real hardware.</li>
+              <li>The example workflows use placeholder endpoints (<code>api.example.com</code>, <code>localhost:1883</code>).</li>
               <li>Projects are stored in this browser only: no cloud sync, accounts or collaboration, and only one saved project.</li>
               <li>No undo/redo.</li>
               <li>Basic logic: one comparison per Logic block. The generator uses the first MQTT block and the first Cloud API block.</li>
@@ -309,15 +427,24 @@ export function Docs() {
               <dt>
                 <strong>Run simulation</strong> is disabled.
               </dt>
-              <dd>The workflow has no Virtual Sensor. Add one, or click Example.</dd>
+              <dd>The workflow has no Virtual Sensor. Add one, or load an example with Examples.</dd>
               <dt>
                 <strong>Export JSON</strong> and <strong>Generate project</strong> are disabled.
               </dt>
-              <dd>The canvas is empty. Add blocks or load the example.</dd>
+              <dd>The canvas is empty. Add blocks or load an example.</dd>
               <dt>Nothing reaches MQTT or the Cloud API during the simulation.</dt>
               <dd>
                 Data reaches a block only through connections, and a Logic block passes it only when its condition is true. Check the connections, and the Logic
                 block’s operator and threshold. The example’s threshold is below the sensor’s maximum, so alerts appear when the value rises above it.
+              </dd>
+              <dt>The guide is gone and I want it back.</dt>
+              <dd>
+                Click <strong>Guide</strong> in the toolbar above the canvas. Closing the guide is remembered in this browser only.
+              </dd>
+              <dt>The generated simulator prints readings but sends nothing.</dt>
+              <dd>
+                That is the default. Add <code>--send-mqtt</code> and/or <code>--send-api</code>. For MQTT, install <code>paho-mqtt</code> and make sure a broker
+                listens at the configured address; the simulator prints why it cannot connect.
               </dd>
               <dt>My project disappeared.</dt>
               <dd>

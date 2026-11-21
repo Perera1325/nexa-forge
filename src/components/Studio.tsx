@@ -15,6 +15,8 @@ import {
 } from '@xyflow/react';
 import { BLOCKS, DRAG_MIME } from '../blocks';
 import { createDemoWorkflow, createNode } from '../lib/nodes';
+import type { WorkflowExample } from '../examples';
+import { dismissGuide, isGuideDismissed } from '../lib/guide';
 import { MAX_WORKFLOW_BYTES, buildWorkflow, parseWorkflow, validateWorkflow, type ParseResult } from '../lib/workflow';
 import { loadProject } from '../lib/storage';
 import { useAutosave } from '../hooks/useAutosave';
@@ -28,7 +30,8 @@ import { Sidebar } from './Sidebar';
 import { Inspector } from './Inspector';
 import { LivePanel } from './LivePanel';
 import { Dock, type DockTab } from './BottomPanels';
-import { ConfirmDialog, JsonDialog, ProjectDialog } from './Dialogs';
+import { ConfirmDialog, GalleryDialog, JsonDialog, ProjectDialog } from './Dialogs';
+import { Guide } from './Guide';
 import { BlocksIcon, BoxIcon, BracesIcon, CloseIcon, LogoMark, PlayIcon, SlidersIcon, StopIcon } from './icons';
 
 const nodeTypes: NodeTypes = { nexa: NexaNodeView };
@@ -38,7 +41,7 @@ const defaultEdgeOptions = {
 };
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
-type Output = { kind: 'json'; json: string; summary: string } | { kind: 'project'; files: GeneratedFile[] } | null;
+type Output = { kind: 'gallery' } | { kind: 'json'; json: string; summary: string } | { kind: 'project'; files: GeneratedFile[] } | null;
 type Drawer = 'palette' | 'inspector' | null;
 type Prompt = { title: string; message: string; confirmLabel: string; danger?: boolean; showCancel?: boolean; onConfirm: () => void } | null;
 
@@ -73,6 +76,7 @@ export function Studio() {
   const [output, setOutput] = useState<Output>(null);
   const [dockTab, setDockTab] = useState<DockTab>('log');
   const [drawer, setDrawer] = useState<Drawer>(null);
+  const [guideOpen, setGuideOpen] = useState(() => !isGuideDismissed());
   const canvasRef = useRef<HTMLDivElement>(null);
   const { screenToFlowPosition, fitView } = useReactFlow();
   const sim = useSimulation(nodes, edges);
@@ -176,11 +180,18 @@ export function Studio() {
   };
 
   const keepNote = ' Export JSON first if you want to keep a copy.';
-  const loadDemo = () =>
-    confirmReplace('Load the example workflow?', `This replaces everything on the canvas.${keepNote}`, 'Replace', () => {
-      const fresh = createDemoWorkflow();
-      replaceGraph(DEFAULT_NAME, fresh.nodes, fresh.edges);
+  const browseExamples = () => setOutput({ kind: 'gallery' });
+  const loadExample = (example: WorkflowExample) => {
+    setOutput(null);
+    confirmReplace(`Load "${example.title}"?`, `This replaces everything on the canvas.${keepNote}`, 'Replace', () => {
+      const fresh = example.build();
+      replaceGraph(example.name, fresh.nodes, fresh.edges);
     });
+  };
+  const closeGuide = () => {
+    setGuideOpen(false);
+    dismissGuide();
+  };
   const newProject = () =>
     confirmReplace('Start a new project?', `This clears the canvas and the project name.${keepNote}`, 'New project', () =>
       replaceGraph('Untitled project', [], []),
@@ -344,8 +355,11 @@ export function Studio() {
               <button className="btn btn-sm btn-quiet" onClick={() => fileRef.current?.click()} title="Load a workflow from a NEXA Forge .json file">
                 Import
               </button>
-              <button className="btn btn-sm btn-quiet" onClick={loadDemo} title="Replace the canvas with an example workflow">
-                Example
+              <button className="btn btn-sm btn-quiet" onClick={browseExamples} title="Browse example workflows">
+                Examples
+              </button>
+              <button className="btn btn-sm btn-quiet" onClick={() => setGuideOpen(true)} aria-pressed={guideOpen} title="Show the guided first workflow">
+                Guide
               </button>
               <button className="btn btn-sm btn-quiet" onClick={clearAll} disabled={nodes.length === 0} aria-label="Clear canvas" title="Remove all blocks and connections">
                 Clear
@@ -377,6 +391,8 @@ export function Studio() {
               </ReactFlow>
             </RuntimeContext.Provider>
 
+            {guideOpen && <Guide onClose={closeGuide} onBrowseExamples={browseExamples} />}
+
             {nodes.length === 0 && (
               <div className="canvas-empty">
                 <div className="canvas-empty__card">
@@ -386,8 +402,8 @@ export function Studio() {
                     project.
                   </p>
                   <div className="canvas-empty__actions">
-                    <button className="btn btn-primary" onClick={loadDemo}>
-                      Load example workflow
+                    <button className="btn btn-primary" onClick={browseExamples}>
+                      Browse example workflows
                     </button>
                   </div>
                   <p className="canvas-empty__hint">Or drag a block from the palette. Select a block and press Delete to remove it.</p>
@@ -428,6 +444,7 @@ export function Studio() {
           onClose={() => setPrompt(null)}
         />
       )}
+      {output?.kind === 'gallery' && <GalleryDialog onLoad={loadExample} onClose={() => setOutput(null)} />}
       {output?.kind === 'json' && <JsonDialog json={output.json} summary={output.summary} filename={`${slug}.workflow.json`} onClose={() => setOutput(null)} />}
       {output?.kind === 'project' && <ProjectDialog files={output.files} zipName={`${slug}.zip`} onClose={() => setOutput(null)} />}
     </div>

@@ -12,6 +12,7 @@ describe('generateProject', () => {
     const files = byPath(generateProject('Demo', nodes, edges));
     expect(Object.keys(files).sort()).toEqual(
       [
+        '.gitignore',
         'Dockerfile',
         'README.md',
         'docker-compose.yml',
@@ -63,6 +64,50 @@ describe('generateProject', () => {
     expect(files['Dockerfile']).toContain('USER nexa');
     expect(files['docker-compose.yml']).toContain('127.0.0.1:1883');
     expect(Object.values(files).join('\n')).not.toMatch(/(password|secret|token|api[_-]?key)\s*[:=]\s*\S/i);
+  });
+
+  it('generates a self-explanatory README: structure, config, run steps, simulated parts, limits', () => {
+    const { nodes, edges } = createDemoWorkflow();
+    const readme = byPath(generateProject('Demo', nodes, edges))['README.md'];
+    for (const heading of ['What is real and what is simulated', 'Folder structure', 'Requirements', 'Run the simulator', 'Configuration', 'Docker', 'Kubernetes', 'Limitations']) {
+      expect(readme).toContain(`## ${heading}`);
+    }
+    expect(readme).toContain('python simulator/simulator.py --ticks 10');
+    expect(readme).toContain('`simulator/config.json`');
+    expect(readme).toContain('| `MQTT_BROKER` |');
+    expect(readme).toContain('**Boiler Temperature** → MQTT topic `nexa/factory/telemetry`, only when **Overheat Rule** passes');
+    expect(readme).toMatch(/No real hardware/);
+    expect(readme).not.toMatch(/deploys? to (a )?(real|production)|supports? (real )?hardware/i);
+  });
+
+  it('leaves Docker and Kubernetes sections out when the workflow has no such blocks', () => {
+    const { nodes } = createDemoWorkflow();
+    const readme = byPath(generateProject('Tiny', nodes.filter((n) => n.data.kind === 'sensor'), []))['README.md'];
+    expect(readme).not.toContain('## Docker');
+    expect(readme).not.toContain('## Kubernetes');
+    expect(readme).toContain('No sensor is connected to an MQTT or Cloud API block');
+  });
+
+  it('does not let a project name or block label break the README layout', () => {
+    const { nodes, edges } = createDemoWorkflow();
+    nodes[0].data.label = 'Evil`\n## Injected';
+    const readme = byPath(generateProject('Name\n# Injected', nodes, edges))['README.md'];
+    expect(readme).not.toMatch(/^## Injected/m);
+    expect(readme).not.toMatch(/^# Injected/m);
+  });
+
+  it('keeps the generated simulator offline unless sending is requested', () => {
+    const { nodes, edges } = createDemoWorkflow();
+    const files = byPath(generateProject('Demo', nodes, edges));
+    const py = files['simulator/simulator.py'];
+    expect(py).toContain('--send-mqtt');
+    expect(py).toContain('--send-api');
+    expect(py).toContain('args.send_api and "api" in open_targets');
+    expect(py).toContain('connect_mqtt() if args.send_mqtt else None');
+    expect(files['docker-compose.yml']).toContain('"--send-mqtt"');
+    expect(files['k8s/deployment.yaml']).toContain('command: ["python", "-u", "simulator/simulator.py", "--send-mqtt"]');
+    expect(files['Dockerfile']).not.toContain('--send');
+    expect(files['requirements.txt']).toContain('paho-mqtt');
   });
 
   it('generates only what the workflow contains', () => {

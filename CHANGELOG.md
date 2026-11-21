@@ -5,6 +5,10 @@ All notable changes to NEXA Forge are recorded here. The project is an early-sta
 ## [Unreleased]
 
 ### Added
+- Example workflow gallery (Examples in the Studio toolbar): Smart Temperature Monitoring, Energy Monitoring and Alerting, Edge-to-Cloud Data Pipeline, and the basic overheat chain. Software-only, valid, and covered by tests (validation, planning, export/import, save/restore, simulation, project generation).
+- Optional, dismissible first-workflow guide with a Guide button to reopen it.
+- Developer documentation: first-workflow tutorial, example descriptions, generated-project instructions and troubleshooting entries.
+- Generated simulator options: `--ticks`, `--interval`, `--send-mqtt`, `--send-api`.
 - Workflow execution engine (`src/engine`): validation and ordering of blocks, typed events, errors and per-block status, simulated adapters, and a timer runner that guarantees a single timer. Covered by unit tests, including a check that the engine never imports React.
 - Docker and Kubernetes blocks now log a one-time preparation message at the start of a run (configuration only, clearly marked as simulated).
 - Workflow problems found at run time (blocks no sensor reaches, invalid connections, loops, invalid settings) are reported once in the Event Log.
@@ -18,6 +22,9 @@ All notable changes to NEXA Forge are recorded here. The project is an early-sta
 - ARCHITECTURE.md and a developer-preview release checklist.
 
 ### Changed
+- The toolbar button Example is now Examples and opens the gallery. The empty canvas button now reads Browse example workflows.
+- Generated projects are offline by default: the simulator only prints readings until started with `--send-mqtt` or `--send-api`. Docker Compose and the Kubernetes deployment start it with `--send-mqtt`.
+- Generated README rewritten: simulated vs real, folder structure, the workflow's data routes, requirements, run steps, configuration with the real config, Docker and Kubernetes sections (only when present), limitations. Generated projects now include a `.gitignore`, and `requirements.txt` explains why `paho-mqtt` is listed.
 - Simulated MQTT and Cloud API events are marked "· simulated" in the Event Log.
 - The simulation hook is now a thin adapter over the engine. A block with invalid settings now fails visibly instead of silently using 0, and a loop in the workflow is reported instead of being skipped silently.
 - The Studio editor moved from `/` to `/studio`. The editor itself is unchanged. It is loaded lazily, which also removes the large-chunk build warning.

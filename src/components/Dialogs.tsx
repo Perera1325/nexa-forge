@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { createZip } from '../lib/zip';
 import { downloadBlob, downloadText } from '../lib/files';
+import { EXAMPLES, type WorkflowExample } from '../examples';
 import type { GeneratedFile } from '../types';
 import { CloseIcon } from './icons';
 
@@ -175,6 +176,35 @@ export function ConfirmDialog({
           {confirmLabel}
         </button>
       </div>
+    </Modal>
+  );
+}
+
+export function GalleryDialog({ onLoad, onClose }: { onLoad: (example: WorkflowExample) => void; onClose: () => void }) {
+  return (
+    <Modal title="Example workflows" meta="Ready-made, software-only workflows. Loading one replaces the canvas." onClose={onClose}>
+      <ul className="gallery" aria-label="Example workflows">
+        {EXAMPLES.map((example) => {
+          const { nodes, edges } = example.build();
+          return (
+            <li className="example" key={example.id}>
+              <h3>{example.title}</h3>
+              <p>{example.summary}</p>
+              <ul aria-label={`What ${example.title} shows`}>
+                {example.teaches.map((point) => (
+                  <li key={point}>{point}</li>
+                ))}
+              </ul>
+              <p className="example__meta">
+                {nodes.length} blocks · {edges.length} connections · simulated data
+              </p>
+              <button className="btn btn-primary btn-sm" onClick={() => onLoad(example)} aria-label={`Load ${example.title}`}>
+                Load example
+              </button>
+            </li>
+          );
+        })}
+      </ul>
     </Modal>
   );
 }

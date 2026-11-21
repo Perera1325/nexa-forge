@@ -122,3 +122,8 @@
   .cta-row .btn { flex: 1 1 100%; }
 }
 @media (prefers-reduced-motion: reduce) { .site { scroll-behavior: auto; } }
+
+.doc-example { margin-top: 20px; padding: 16px 18px; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--bg-1); }
+.doc-example h3 { margin-top: 0; }
+.doc-example > p { margin-bottom: 4px; }
+.docs-body li, .doc-example li { overflow-wrap: anywhere; min-width: 0; }
