@@ -22,15 +22,15 @@ function link(source: string, target: string): NexaEdge {
   return { id: `e-${source}-${target}`, source, target };
 }
 
-/** A ready-made pipeline so the canvas is never empty on first launch. */
+/** Example pipeline: acquire and filter data (row 1), then deliver and deploy it (row 2). */
 export function createDemoWorkflow(): { nodes: NexaNode[]; edges: NexaEdge[] } {
   const nodes = [
-    createNode('sensor', { x: 0, y: 120 }, 'demo-sensor'),
-    createNode('logic', { x: 230, y: 120 }, 'demo-logic'),
-    createNode('mqtt', { x: 460, y: 120 }, 'demo-mqtt'),
-    createNode('cloudApi', { x: 690, y: 120 }, 'demo-api'),
-    createNode('docker', { x: 920, y: 120 }, 'demo-docker'),
-    createNode('kubernetes', { x: 1150, y: 120 }, 'demo-k8s'),
+    createNode('sensor', { x: 0, y: 0 }, 'demo-sensor'),
+    createNode('logic', { x: 300, y: 0 }, 'demo-logic'),
+    createNode('mqtt', { x: 600, y: 0 }, 'demo-mqtt'),
+    createNode('cloudApi', { x: 0, y: 250 }, 'demo-api'),
+    createNode('docker', { x: 300, y: 250 }, 'demo-docker'),
+    createNode('kubernetes', { x: 600, y: 250 }, 'demo-k8s'),
   ];
   nodes[0].data.label = 'Boiler Temperature';
   nodes[1].data.label = 'Overheat Rule';

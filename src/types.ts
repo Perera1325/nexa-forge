@@ -24,7 +24,14 @@ export interface LogEntry {
   id: number;
   time: string;
   level: 'info' | 'event' | 'warn';
+  source: string;
   message: string;
+}
+
+export interface WorkflowIssue {
+  level: 'error' | 'warning';
+  message: string;
+  nodeId?: string;
 }
 
 export interface GeneratedFile {

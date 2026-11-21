@@ -6,6 +6,8 @@ const TICK_MS = 1000;
 const HISTORY_LENGTH = 40;
 const MAX_LOGS = 80;
 
+type LogInput = Pick<LogEntry, 'level' | 'source' | 'message'>;
+
 export function useSimulation(nodes: NexaNode[], edges: NexaEdge[]) {
   const [running, setRunning] = useState(false);
   const [tick, setTick] = useState(0);
@@ -21,9 +23,9 @@ export function useSimulation(nodes: NexaNode[], edges: NexaEdge[]) {
     graphRef.current = { nodes, edges };
   }, [nodes, edges]);
 
-  const pushLogs = useCallback((items: Array<Pick<LogEntry, 'level' | 'message'>>) => {
+  const pushLogs = useCallback((items: LogInput[]) => {
     if (items.length === 0) return;
-    const time = new Date().toLocaleTimeString();
+    const time = new Date().toLocaleTimeString([], { hour12: false });
     const entries = items
       .slice()
       .reverse()
@@ -54,7 +56,7 @@ export function useSimulation(nodes: NexaNode[], edges: NexaEdge[]) {
 
   const start = useCallback(() => {
     if (running) return;
-    pushLogs([{ level: 'info', message: 'Simulation started' }]);
+    pushLogs([{ level: 'info', source: 'Simulation', message: 'Started' }]);
     step();
     setRunning(true);
   }, [running, step, pushLogs]);
@@ -62,7 +64,7 @@ export function useSimulation(nodes: NexaNode[], edges: NexaEdge[]) {
   const stop = useCallback(() => {
     setRunning(false);
     setRuntime({});
-    pushLogs([{ level: 'info', message: 'Simulation stopped' }]);
+    pushLogs([{ level: 'info', source: 'Simulation', message: 'Stopped' }]);
   }, [pushLogs]);
 
   const reset = useCallback(() => {

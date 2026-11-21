@@ -2,6 +2,7 @@ import type { NexaEdge, NexaNode, NodeConfig, NodeRuntime } from '../types';
 
 export interface TickMessage {
   level: 'info' | 'event' | 'warn';
+  source: string;
   message: string;
 }
 
@@ -76,13 +77,13 @@ export function runTick(nodes: NexaNode[], edges: NexaEdge[], tick: number): Tic
       const passed = compare(signal.value, String(config.operator), Number(config.threshold));
       runtime[node.id] = { active: true, value: signal.value, passed };
       if (!passed) return;
-      messages.push({ level: 'warn', message: `${label}: ${signal.value}${signal.unit} ${config.operator} ${config.threshold} - triggered` });
+      messages.push({ level: 'warn', source: label, message: `Condition met: ${signal.value} ${signal.unit} ${config.operator} ${config.threshold}` });
     } else if (kind === 'mqtt') {
       runtime[node.id] = { active: true, value: signal.value };
-      messages.push({ level: 'event', message: `${label}: PUBLISH ${config.topic} {"value":${signal.value}}` });
+      messages.push({ level: 'event', source: label, message: `PUBLISH ${config.topic} {"value":${signal.value}}` });
     } else if (kind === 'cloudApi') {
       runtime[node.id] = { active: true, value: signal.value };
-      messages.push({ level: 'event', message: `${label}: ${config.method} ${config.url}` });
+      messages.push({ level: 'event', source: label, message: `${config.method} ${config.url}` });
     } else {
       runtime[node.id] = { active: true, value: signal.value };
     }
