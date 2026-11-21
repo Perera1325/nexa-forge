@@ -233,7 +233,7 @@ export function Docs() {
               </li>
             </ul>
             <p>
-              The simulation is mock data only. The MQTT and Cloud API blocks do not make network calls in the editor. Click <strong>Stop</strong> to end it.
+              Everything is simulated. The MQTT and Cloud API blocks only log what they would send, and the Docker and Kubernetes blocks log a one-time preparation message when the run starts. Nothing connects to a broker or API, builds an image or touches a cluster. A block with invalid settings is reported once in the Event Log as an error and does not run, and blocks that are not connected to a sensor are reported and skipped. Click <strong>Stop</strong> to end the run.
             </p>
           </section>
 

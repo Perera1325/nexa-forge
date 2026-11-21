@@ -5,6 +5,9 @@ All notable changes to NEXA Forge are recorded here. The project is an early-sta
 ## [Unreleased]
 
 ### Added
+- Workflow execution engine (`src/engine`): validation and ordering of blocks, typed events, errors and per-block status, simulated adapters, and a timer runner that guarantees a single timer. Covered by unit tests, including a check that the engine never imports React.
+- Docker and Kubernetes blocks now log a one-time preparation message at the start of a run (configuration only, clearly marked as simulated).
+- Workflow problems found at run time (blocks no sensor reaches, invalid connections, loops, invalid settings) are reported once in the Event Log.
 - Public website: a homepage at `/` and developer documentation at `/docs` (quick start, installation, editor, simulation, export, project generation, limitations, troubleshooting), with a real Studio screenshot. Small built-in router with no new dependencies.
 - Autosave of the current project to browser storage, with a Saved / Saving / Save failed indicator and Ctrl+S to save immediately.
 - Project is restored after a page refresh. Corrupted saved data is never discarded silently: a copy is kept in browser storage and the user is told.
@@ -15,6 +18,8 @@ All notable changes to NEXA Forge are recorded here. The project is an early-sta
 - ARCHITECTURE.md and a developer-preview release checklist.
 
 ### Changed
+- Simulated MQTT and Cloud API events are marked "· simulated" in the Event Log.
+- The simulation hook is now a thin adapter over the engine. A block with invalid settings now fails visibly instead of silently using 0, and a loop in the workflow is reported instead of being skipped silently.
 - The Studio editor moved from `/` to `/studio`. The editor itself is unchanged. It is loaded lazily, which also removes the large-chunk build warning.
 - Page title and description updated from the Vite template default.
 - Generated projects now keep settings in `simulator/config.json` instead of embedding them in Python source, so user-entered text can never become executable code.

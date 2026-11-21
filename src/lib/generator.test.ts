@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { computeRoutes, generateProject } from './generator';
 import { createDemoWorkflow, createNode } from './nodes';
-import { runTick } from '../simulation/engine';
+import { createEngine } from '../engine';
 import { createZip } from './zip';
 
 const byPath = (files: ReturnType<typeof generateProject>) => Object.fromEntries(files.map((f) => [f.path, f.content]));
@@ -125,13 +125,13 @@ describe('computeRoutes (generated simulator follows the editor model)', () => {
       const { nodes, edges } = fixed(threshold);
       const mqtt = nodeOf(nodes, 'mqtt');
       const api = nodeOf(nodes, 'cloudApi');
-      const sim = runTick(nodes, edges, 1);
+      const sim = createEngine().tick({ nodes, edges });
       const value = sim.readings['demo-sensor'];
       const passes = value > threshold;
       const reaches = (target: 'mqtt' | 'api') =>
         computeRoutes(nodes, edges, mqtt, api).some((r) => r.target === target && r.via.every(() => passes));
-      expect(reaches('mqtt')).toBe(sim.messages.some((m) => m.message.startsWith('PUBLISH')));
-      expect(reaches('api')).toBe(sim.messages.some((m) => m.message.startsWith('POST')));
+      expect(reaches('mqtt')).toBe(sim.events.some((m) => m.message.startsWith('PUBLISH')));
+      expect(reaches('api')).toBe(sim.events.some((m) => m.message.startsWith('POST')));
     }
   });
 

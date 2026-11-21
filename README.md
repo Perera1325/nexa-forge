@@ -23,6 +23,7 @@ The long-term vision is one visual workspace where an engineer can describe that
 - **Inspector:** edit a block's name and configuration, with hints and inline validation, and see its connections.
 - **Workflow check:** structural and configuration validation. Clicking an issue jumps to the block.
 - **Mock simulation:** virtual sensors generate sine, random or ramp data. Data flows along the connections, Logic blocks gate it on a condition, and live values, sparklines and an event log update every second.
+- **Execution engine:** the simulation runs on a separate TypeScript engine (no React) that plans a valid execution order, reports invalid connections, loops and settings, records a status per block and sends events to the Event Log. See [ARCHITECTURE.md](ARCHITECTURE.md).
 - **Projects in your browser:** the project autosaves to browser storage and is restored after a refresh. Status shows Saved, Saving or Save failed. Ctrl+S saves immediately. New project and confirmations protect against accidental loss.
 - **Workflow JSON export and import:** versioned JSON. Imports are validated, and malformed or newer-format files are rejected with a clear message.
 - **Project generation:** a starter project you can preview and download as a `.zip`: a Python simulator with `config.json`, `requirements.txt`, a Dockerfile, a Docker Compose file with a local MQTT broker, Kubernetes manifests and a README. Generation happens in the browser and nothing is uploaded.

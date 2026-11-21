@@ -1,24 +1,33 @@
 # Architecture
 
 NEXA Forge is a client-side single-page app. There is no backend: all state lives in the browser.
-src/
-types.ts Node, edge, log and issue types
-blocks.ts Block catalog: fields, defaults, categories (the single source of truth)
-lib/
-workflow.ts Workflow data model, export, import (parseWorkflow) and validation
-storage.ts Load/save the project in browser storage (storage is injectable for tests)
-generator.ts Turns a workflow into starter project files
-zip.ts, files.ts Dependency-free ZIP writer and download helpers
-nodes.ts Node factory and the example workflow
-simulation/
-engine.ts Pure simulation step (runTick), no React
-useSimulation.ts Timer, history and event log around the engine
-hooks/useAutosave.ts Debounced autosave and save status
-components/ UI: Studio (composition root), Sidebar, Inspector, dialogs, panels
 
+```
+src/
+  types.ts                 Node, edge, log and issue types
+  blocks.ts                Block catalog: fields, defaults, categories (the single source of truth)
+  lib/
+    workflow.ts            Workflow data model, export, import (parseWorkflow) and validation
+    storage.ts             Load/save the project in browser storage (storage is injectable for tests)
+    generator.ts           Turns a workflow into starter project files
+    zip.ts, files.ts       Dependency-free ZIP writer and download helpers
+    nodes.ts               Node factory and the example workflow
+  engine/                  Workflow execution engine: pure TypeScript, no React or DOM (see "Execution engine")
+    types.ts               Graph, events, errors, node status, step outputs
+    plan.ts                Validation and execution order (buildPlan)
+    engine.ts              Step-by-step executor (createEngine)
+    adapters.ts            Simulated sensor, MQTT, API, Docker and Kubernetes adapters
+    runner.ts              Timer around the engine: exactly one timer while running
+    logic.ts               Logic block comparison
+  simulation/              UI adapter for the engine
+    useSimulation.ts       React hook: owns UI state, creates and disposes the runner
+    presenter.ts           Engine events to Event Log rows
+  hooks/useAutosave.ts     Debounced autosave and save status
+  components/              UI: Studio (composition root), Sidebar, Inspector, dialogs, panels
+```
 
 ## Principles
-- **Pure logic is separate from UI.** `lib/*` and `simulation/engine.ts` have no React or DOM dependency and are unit tested.
+- **Pure logic is separate from UI.** `lib/*` and `engine/*` have no React or DOM dependency and are unit tested. A test fails if an engine file imports React, `@xyflow/react` or any UI folder.
 - **One block catalog.** Adding a block means one entry in `blocks.ts`. The palette, Inspector, node card and validation read from it. The simulation engine and generator also need a branch for the new kind.
 - **Untrusted input is parsed, not trusted.** Imported files and stored data go through `parseWorkflow`, which copies only known, correctly typed fields.
 - **Generated text is never executable by accident.** User text goes into `config.json` or quoted YAML scalars, never into Python source.
@@ -28,8 +37,17 @@ JSON with `schema: "nexa-forge/workflow"`, an integer `version` (currently 1), `
 
 Compatibility: files from older versions must keep importing. When `WORKFLOW_VERSION` is raised, add a migration step at the top of `parseWorkflow` that upgrades older documents before validation. Files with a newer version are rejected with a clear message.
 
-## Simulation
-`runTick(nodes, edges, tick)` generates one reading per Virtual Sensor and walks the edges downstream. Logic blocks stop the flow when their condition is false. A visited-set guards against cycles. Everything is simulated: no network, broker or hardware access.
+## Execution engine
+Layers, from data to screen: **data model** (`types.ts`, `blocks.ts`, `lib/workflow.ts`) → **validation** (`validateConfig` in `lib/workflow.ts`, and `engine/plan.ts`) → **execution engine** (`engine/engine.ts`) → **adapters** (`engine/adapters.ts`) → **UI** (`simulation/*`, `components/*`). Each layer only knows the ones before it.
+
+- **Plan.** `buildPlan({ nodes, edges })` never throws. It ignores invalid connections (missing block, self-loop, duplicate, out of a block without an output or into one without an input), flags unknown block types and invalid settings, finds blocks no sensor can reach, detects loops, and returns the runnable blocks in topological order (Kahn's algorithm, stable for the stored order). Every problem is a typed `ExecutionError` (`code`, `level`, `message`, `nodeId`/`edgeId`).
+- **Engine.** `createEngine()` has `start(graph)`, `tick(graph)`, `stop()` and `reset()`. A step runs the blocks in plan order. Each block receives the readings of the sensors upstream of it, at most one per sensor per step. Sensors read through the adapter, Logic blocks keep only the readings whose condition is true, MQTT and Cloud API blocks produce one event per reading and pass the reading on, Docker and Kubernetes blocks only receive it. The graph is passed on every call, so edits while running apply on the next step. The plan is cached per graph identity.
+- **Status per block.** `idle`, `ok`, `blocked` (Logic condition false), `prepared` (Docker/Kubernetes), `skipped` (cannot run) or `failed` (invalid settings, or an exception), with the last value and a run count.
+- **Events.** Typed `ExecutionEvent`s (`kind`, `level`, `source`, `message`, `tick`, `nodeId`, `data`). Levels are `debug`, `info`, `event`, `warn`, `error`. Each distinct problem is reported once per run, not on every step. Events that stand for an external action carry `data.simulated`.
+- **Failures.** Invalid settings fail only that block, and what is downstream of it receives nothing. An exception inside a block is caught, marks the block `failed` and reports one error event. The rest of the workflow keeps running.
+- **Adapters.** The only place a block touches "the outside world". The default adapters are simulated: they return a record of what would be published, requested or prepared, with `simulated: true`, and nothing opens a connection. A real adapter would have to be written and passed to `createEngine({ adapters })` explicitly; nothing creates one by default.
+- **Runner.** `createRunner()` drives an engine with an injected scheduler. `start()` returns false if a run is active, so a second timer cannot exist; `stop()` and `dispose()` clear the timer; an unexpected engine error stops the run and calls `onError`.
+- **UI.** `useSimulation` creates one runner per mounted component and disposes it on unmount. `presenter.ts` maps events to Event Log rows: debug events are hidden, and errors are shown with the existing warning style and an "Error:" prefix.
 
 ## Extending
 Future integration targets (ESP32/Arduino, embedded Linux, edge AI platforms, MQTT, AWS, OpenChoreo) are not implemented. The intended extension points are new entries in `blocks.ts` and new generator targets in `lib/generator.ts`.
