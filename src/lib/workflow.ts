@@ -1,9 +1,15 @@
 import { BLOCKS } from '../blocks';
 import type { BlockKind, ConfigValue, NexaEdge, NexaNode, NodeConfig, WorkflowIssue } from '../types';
 
+export const WORKFLOW_SCHEMA = 'nexa-forge/workflow' as const;
+export const WORKFLOW_VERSION = 1 as const;
+export const MAX_WORKFLOW_BYTES = 1_000_000;
+const MAX_NODES = 500;
+const MAX_EDGES = 2000;
+
 export interface WorkflowDocument {
-  schema: 'nexa-forge/workflow';
-  version: 1;
+  schema: typeof WORKFLOW_SCHEMA;
+  version: typeof WORKFLOW_VERSION;
   name: string;
   exportedAt: string;
   nodes: Array<{
@@ -18,8 +24,8 @@ export interface WorkflowDocument {
 
 export function buildWorkflow(name: string, nodes: NexaNode[], edges: NexaEdge[]): WorkflowDocument {
   return {
-    schema: 'nexa-forge/workflow',
-    version: 1,
+    schema: WORKFLOW_SCHEMA,
+    version: WORKFLOW_VERSION,
     name,
     exportedAt: new Date().toISOString(),
     nodes: nodes.map((n) => ({
@@ -88,4 +94,114 @@ export function validateWorkflow(nodes: NexaNode[], edges: NexaEdge[]): Workflow
     if (kind !== 'sensor' && !hasIn) issues.push({ level: 'warning', message: `${label} has no incoming connection.`, nodeId: n.id });
   }
   return issues;
+}
+
+// ---------------------------------------------------------------- import
+
+export type ParseResult =
+  | { ok: true; name: string; nodes: NexaNode[]; edges: NexaEdge[]; warnings: string[] }
+  | { ok: false; error: string };
+
+const fail = (error: string): ParseResult => ({ ok: false, error });
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+const isBlockKind = (v: unknown): v is BlockKind => typeof v === 'string' && Object.hasOwn(BLOCKS, v);
+
+/** Copies only known config keys, falling back to defaults for anything missing or the wrong type. */
+function sanitizeConfig(kind: BlockKind, raw: unknown): NodeConfig {
+  const def = BLOCKS[kind];
+  const input = isRecord(raw) ? raw : {};
+  const config: NodeConfig = {};
+  for (const [key, fallback] of Object.entries(def.defaults)) {
+    const value = input[key];
+    const options = def.fields.find((f) => f.key === key)?.options;
+    if (typeof fallback === 'number') {
+      config[key] = (typeof value === 'number' && Number.isFinite(value)) || value === '' ? value : fallback;
+    } else if (typeof value === 'string' && value.length <= 500 && (!options || options.includes(value))) {
+      config[key] = value;
+    } else {
+      config[key] = fallback;
+    }
+  }
+  return config;
+}
+
+/**
+ * Parses and validates workflow JSON from an untrusted source (a file or browser storage).
+ * Only known fields are copied, so unknown or malicious keys never reach application state.
+ * Structural problems fail the import; recoverable ones are fixed and reported as warnings.
+ *
+ * Migration strategy: when WORKFLOW_VERSION is raised, add a migration step here that upgrades
+ * older documents before validation, so files exported by earlier versions keep loading.
+ */
+export function parseWorkflow(text: string): ParseResult {
+  if (text.length > MAX_WORKFLOW_BYTES) return fail('The file is too large (limit 1 MB).');
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    return fail('The file is not valid JSON.');
+  }
+  if (!isRecord(raw)) return fail('Expected a JSON object at the top level.');
+  if (raw.schema !== WORKFLOW_SCHEMA) return fail('This is not a NEXA Forge workflow file (missing or unknown "schema").');
+  if (typeof raw.version !== 'number' || !Number.isInteger(raw.version) || raw.version < 1) return fail('The workflow has a missing or invalid "version".');
+  if (raw.version > WORKFLOW_VERSION) {
+    return fail(`This workflow uses format version ${raw.version}, which is newer than this app supports (version ${WORKFLOW_VERSION}).`);
+  }
+  if (!Array.isArray(raw.nodes) || !Array.isArray(raw.edges)) return fail('"nodes" and "edges" must both be arrays.');
+  if (raw.nodes.length > MAX_NODES) return fail(`Too many blocks (limit ${MAX_NODES}).`);
+  if (raw.edges.length > MAX_EDGES) return fail(`Too many connections (limit ${MAX_EDGES}).`);
+
+  const warnings: string[] = [];
+  const nodes: NexaNode[] = [];
+  const kinds = new Map<string, BlockKind>();
+
+  for (const [i, entry] of raw.nodes.entries()) {
+    if (!isRecord(entry)) return fail(`Block ${i + 1} is not an object.`);
+    const { id, kind } = entry;
+    if (typeof id !== 'string' || id.length === 0 || id.length > 100) return fail(`Block ${i + 1} has a missing or invalid "id".`);
+    if (kinds.has(id)) return fail(`Duplicate block id "${id}".`);
+    if (!isBlockKind(kind)) return fail(`Block "${id}" has an unknown type "${String(kind)}".`);
+
+    let label = BLOCKS[kind].title;
+    if (typeof entry.label === 'string' && entry.label.trim()) label = entry.label.slice(0, 80);
+    else warnings.push(`Block "${id}" had no name; used "${label}".`);
+
+    const pos = entry.position;
+    let position = { x: 0, y: 0 };
+    if (isRecord(pos) && Number.isFinite(pos.x) && Number.isFinite(pos.y)) position = { x: Number(pos.x), y: Number(pos.y) };
+    else warnings.push(`Block "${label}" had no valid position and was placed at the origin.`);
+
+    kinds.set(id, kind);
+    nodes.push({ id, type: 'nexa', position, data: { kind, label, config: sanitizeConfig(kind, entry.config) } });
+  }
+
+  const edges: NexaEdge[] = [];
+  const seen = new Set<string>();
+  let dropped = 0;
+  for (const entry of raw.edges) {
+    const source = isRecord(entry) ? entry.source : undefined;
+    const target = isRecord(entry) ? entry.target : undefined;
+    const sourceKind = typeof source === 'string' ? kinds.get(source) : undefined;
+    const targetKind = typeof target === 'string' ? kinds.get(target) : undefined;
+    const pair = `${String(source)}->${String(target)}`;
+    const valid =
+      typeof source === 'string' &&
+      typeof target === 'string' &&
+      source !== target &&
+      sourceKind !== undefined &&
+      targetKind !== undefined &&
+      BLOCKS[sourceKind].hasOutput &&
+      BLOCKS[targetKind].hasInput &&
+      !seen.has(pair);
+    if (!valid) {
+      dropped += 1;
+      continue;
+    }
+    seen.add(pair);
+    edges.push({ id: `e-${source}-${target}`, source, target });
+  }
+  if (dropped > 0) warnings.push(`${dropped} invalid or duplicate connection${dropped === 1 ? ' was' : 's were'} ignored.`);
+
+  const name = typeof raw.name === 'string' && raw.name.trim() ? raw.name.trim().slice(0, 60) : 'Untitled project';
+  return { ok: true, name, nodes, edges, warnings };
 }

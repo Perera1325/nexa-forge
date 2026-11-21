@@ -4,7 +4,7 @@ import { downloadBlob, downloadText } from '../lib/files';
 import type { GeneratedFile } from '../types';
 import { CloseIcon } from './icons';
 
-function Modal({ title, meta, onClose, children }: { title: string; meta?: string; onClose: () => void; children: ReactNode }) {
+function Modal({ title, meta, onClose, size, children }: { title: string; meta?: string; onClose: () => void; size?: 'small'; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
   const titleId = useId();
@@ -44,7 +44,7 @@ function Modal({ title, meta, onClose, children }: { title: string; meta?: strin
 
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} ref={ref}>
+      <div className={`modal ${size === 'small' ? 'modal--small' : ''}`} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} ref={ref}>
         <div className="modal__head">
           <div>
             <h2 id={titleId}>{title}</h2>
@@ -139,6 +139,40 @@ export function ProjectDialog({ files, zipName, onClose }: { files: GeneratedFil
         <span className="modal__note">Generated locally in your browser. Nothing is uploaded.</span>
         <button className="btn btn-primary" onClick={() => downloadBlob(zipName, createZip(files))}>
           Download all (.zip)
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+export function ConfirmDialog({
+  title,
+  message,
+  confirmLabel,
+  danger = false,
+  showCancel = true,
+  onConfirm,
+  onClose,
+}: {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  danger?: boolean;
+  showCancel?: boolean;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <Modal title={title} onClose={onClose} size="small">
+      <p className="modal__text">{message}</p>
+      <div className="modal__foot modal__foot--end">
+        {showCancel && (
+          <button className="btn" onClick={onClose}>
+            Cancel
+          </button>
+        )}
+        <button className={danger ? 'btn btn-danger btn-inline' : 'btn btn-primary'} onClick={onConfirm}>
+          {confirmLabel}
         </button>
       </div>
     </Modal>

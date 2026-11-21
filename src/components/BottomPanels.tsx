@@ -32,7 +32,7 @@ export function Dock({ tab, onTab, logs, issues, nodeCount, onClear, onFocusNode
           </button>
         </div>
         {tab === 'log' && (
-          <button className="btn btn-sm btn-quiet" onClick={onClear} disabled={logs.length === 0} title="Clear the event log and reset sensor history">
+          <button className="btn btn-sm btn-quiet" onClick={onClear} disabled={logs.length === 0} aria-label="Clear event log" title="Clear the event log and reset sensor history">
             Clear
           </button>
         )}

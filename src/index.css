@@ -293,3 +293,17 @@ legend { padding: 0; margin-bottom: 10px; font-size: 11px; font-weight: 600; let
   .react-flow__edge.animated path { animation: none !important; stroke-dasharray: none !important; }
   * { scroll-behavior: auto !important; }
 }
+
+/* ---------- project state, confirmations ---------- */
+.save-status { display: inline-flex; align-items: center; gap: 7px; height: 24px; padding: 0 8px; border: 1px solid transparent; border-radius: var(--radius); background: transparent; color: var(--text-3); font-size: 12px; white-space: nowrap; cursor: pointer; }
+.save-status:hover { background: var(--bg-3); color: var(--text); }
+.save-status--error { color: var(--danger); }
+.toolbar { overflow-x: auto; scrollbar-width: thin; }
+.toolbar > * { flex: none; }
+.modal--small { width: min(440px, 100%); }
+.modal__text { color: var(--text-2); white-space: pre-line; overflow-wrap: anywhere; }
+.modal__foot--end { justify-content: flex-end; }
+.btn-inline { width: auto; }
+@media (max-width: 819px) {
+  .save-status__text { display: none; }
+}

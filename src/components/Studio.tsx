@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, type DragEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
 import {
   addEdge,
   Background,
@@ -15,7 +15,9 @@ import {
 } from '@xyflow/react';
 import { BLOCKS, DRAG_MIME } from '../blocks';
 import { createDemoWorkflow, createNode } from '../lib/nodes';
-import { buildWorkflow, validateWorkflow } from '../lib/workflow';
+import { MAX_WORKFLOW_BYTES, buildWorkflow, parseWorkflow, validateWorkflow, type ParseResult } from '../lib/workflow';
+import { loadProject } from '../lib/storage';
+import { useAutosave } from '../hooks/useAutosave';
 import { generateProject } from '../lib/generator';
 import { slugify } from '../lib/files';
 import { RuntimeContext } from '../simulation/RuntimeContext';
@@ -26,7 +28,7 @@ import { Sidebar } from './Sidebar';
 import { Inspector } from './Inspector';
 import { LivePanel } from './LivePanel';
 import { Dock, type DockTab } from './BottomPanels';
-import { JsonDialog, ProjectDialog } from './Dialogs';
+import { ConfirmDialog, JsonDialog, ProjectDialog } from './Dialogs';
 import { BlocksIcon, BoxIcon, BracesIcon, CloseIcon, LogoMark, PlayIcon, SlidersIcon, StopIcon } from './icons';
 
 const nodeTypes: NodeTypes = { nexa: NexaNodeView };
@@ -34,22 +36,47 @@ const defaultEdgeOptions = {
   type: 'smoothstep',
   markerEnd: { type: MarkerType.ArrowClosed, color: '#59606d', width: 16, height: 16 },
 };
-const demo = createDemoWorkflow();
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 type Output = { kind: 'json'; json: string; summary: string } | { kind: 'project'; files: GeneratedFile[] } | null;
 type Drawer = 'palette' | 'inspector' | null;
+type Prompt = { title: string; message: string; confirmLabel: string; danger?: boolean; showCancel?: boolean; onConfirm: () => void } | null;
+
+const DEFAULT_NAME = 'Factory Temperature Monitor';
+
+/** Restores the autosaved project, or falls back to the example workflow (with a notice if something went wrong). */
+function bootProject() {
+  const saved = loadProject();
+  if (saved.status === 'ok') return { name: saved.name, nodes: saved.nodes, edges: saved.edges, notice: null };
+  const example = createDemoWorkflow();
+  let notice: { title: string; message: string } | null = null;
+  if (saved.status === 'corrupt') {
+    notice = {
+      title: 'Saved project could not be restored',
+      message: `${saved.error}\nThe unreadable data was kept in browser storage under "nexa-forge:project:corrupt". The example workflow is shown instead.`,
+    };
+  } else if (saved.status === 'unavailable') {
+    notice = { title: 'Browser storage is unavailable', message: 'Your work will not be saved automatically. Use Export JSON to keep a copy.' };
+  }
+  return { name: DEFAULT_NAME, nodes: example.nodes, edges: example.edges, notice };
+}
 
 export function Studio() {
-  const [nodes, setNodes, onNodesChange] = useNodesState<NexaNode>(demo.nodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<NexaEdge>(demo.edges);
-  const [name, setName] = useState('Factory Temperature Monitor');
+  const [boot] = useState(bootProject);
+  const [nodes, setNodes, onNodesChange] = useNodesState<NexaNode>(boot.nodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<NexaEdge>(boot.edges);
+  const [name, setName] = useState(boot.name);
+  const [prompt, setPrompt] = useState<Prompt>(
+    boot.notice ? { ...boot.notice, confirmLabel: 'OK', showCancel: false, onConfirm: () => undefined } : null,
+  );
+  const fileRef = useRef<HTMLInputElement>(null);
   const [output, setOutput] = useState<Output>(null);
   const [dockTab, setDockTab] = useState<DockTab>('log');
   const [drawer, setDrawer] = useState<Drawer>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const { screenToFlowPosition, fitView } = useReactFlow();
   const sim = useSimulation(nodes, edges);
+  const autosave = useAutosave(name, nodes, edges);
 
   const selected = nodes.find((n) => n.selected);
   const issues = useMemo(() => validateWorkflow(nodes, edges), [nodes, edges]);
@@ -130,16 +157,89 @@ export function Studio() {
     fitView({ nodes: [{ id }], maxZoom: 1, duration: 200, padding: 0.6 });
   };
 
-  const loadDemo = () => {
-    const fresh = createDemoWorkflow();
-    setNodes(fresh.nodes);
-    setEdges(fresh.edges);
+  const notify = (title: string, message: string) =>
+    setPrompt({ title, message, confirmLabel: 'OK', showCancel: false, onConfirm: () => undefined });
+
+  /** Runs `action` straight away on an empty canvas, otherwise after the user confirms. */
+  const confirmReplace = (title: string, message: string, confirmLabel: string, action: () => void) => {
+    if (nodes.length === 0) action();
+    else setPrompt({ title, message, confirmLabel, danger: true, onConfirm: action });
+  };
+
+  const replaceGraph = (nextName: string, nextNodes: NexaNode[], nextEdges: NexaEdge[]) => {
+    if (sim.running) sim.stop();
+    sim.reset();
+    setName(nextName);
+    setNodes(nextNodes);
+    setEdges(nextEdges);
     requestAnimationFrame(() => fitView({ padding: 0.2, maxZoom: 1 }));
   };
-  const clearAll = () => {
-    setNodes([]);
-    setEdges([]);
+
+  const keepNote = ' Export JSON first if you want to keep a copy.';
+  const loadDemo = () =>
+    confirmReplace('Load the example workflow?', `This replaces everything on the canvas.${keepNote}`, 'Replace', () => {
+      const fresh = createDemoWorkflow();
+      replaceGraph(DEFAULT_NAME, fresh.nodes, fresh.edges);
+    });
+  const newProject = () =>
+    confirmReplace('Start a new project?', `This clears the canvas and the project name.${keepNote}`, 'New project', () =>
+      replaceGraph('Untitled project', [], []),
+    );
+  const clearAll = () =>
+    confirmReplace('Clear the canvas?', `All blocks and connections will be removed.${keepNote}`, 'Clear canvas', () => {
+      setNodes([]);
+      setEdges([]);
+    });
+
+  const applyImport = (result: Extract<ParseResult, { ok: true }>) => {
+    replaceGraph(result.name, result.nodes, result.edges);
+    if (result.warnings.length > 0) {
+      const shown = result.warnings.slice(0, 5).join('\n');
+      const more = result.warnings.length > 5 ? `\n…and ${result.warnings.length - 5} more.` : '';
+      notify('Imported with adjustments', shown + more);
+    }
   };
+
+  const onImportFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = ''; // allow importing the same file again
+    if (!file) return;
+    if (file.size > MAX_WORKFLOW_BYTES) {
+      notify('Import failed', 'The file is too large (limit 1 MB).');
+      return;
+    }
+    let text: string;
+    try {
+      text = await file.text();
+    } catch {
+      notify('Import failed', 'The file could not be read.');
+      return;
+    }
+    const result = parseWorkflow(text);
+    if (!result.ok) {
+      notify('Import failed', result.error);
+      return;
+    }
+    confirmReplace('Import this workflow?', `"${file.name}" will replace the current canvas.${keepNote}`, 'Import', () => applyImport(result));
+  };
+
+  const saveNow = useCallback(() => {
+    const result = autosave.saveNow();
+    if (!result.ok) notify('Save failed', `${result.error} Use Export JSON to keep a copy.`);
+  }, [autosave]);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+        event.preventDefault();
+        saveNow();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [saveNow]);
+
+  const saveLabel = autosave.status === 'saving' ? 'Saving…' : autosave.status === 'error' ? 'Save failed' : 'Saved in browser';
 
   const exportJson = () =>
     setOutput({
@@ -175,9 +275,15 @@ export function Studio() {
           aria-label="Project name"
           title="Project name (used for exported file names)"
         />
-        <span className="tag" title="NEXA Forge is an early prototype">
-          Prototype
+        <span className="tag" title="NEXA Forge is an early-stage developer preview">
+          Developer preview
         </span>
+        <button className={`save-status save-status--${autosave.status}`} onClick={saveNow} aria-label={`${saveLabel}. Save now`} title="Autosaves to this browser only (no cloud sync). Click or press Ctrl+S to save now.">
+          <span className={`status-dot status-dot--${autosave.status === 'error' ? 'error' : autosave.status === 'saving' ? 'alert' : 'live'}`} aria-hidden="true" />
+          <span className="save-status__text" aria-hidden="true">
+            {saveLabel}
+          </span>
+        </button>
 
         <div className="topbar__right">
           <div className="sim-status" title="Simulation state">
@@ -232,10 +338,16 @@ export function Studio() {
                 <span className={`status-dot status-dot--${check.dot}`} aria-hidden="true" />
                 {check.text}
               </button>
-              <button className="btn btn-sm btn-quiet" onClick={loadDemo} title="Replace the canvas with an example workflow">
-                Load example
+              <button className="btn btn-sm btn-quiet" onClick={newProject} title="Start an empty project">
+                New
               </button>
-              <button className="btn btn-sm btn-quiet" onClick={clearAll} disabled={nodes.length === 0} title="Remove all blocks and connections">
+              <button className="btn btn-sm btn-quiet" onClick={() => fileRef.current?.click()} title="Load a workflow from a NEXA Forge .json file">
+                Import
+              </button>
+              <button className="btn btn-sm btn-quiet" onClick={loadDemo} title="Replace the canvas with an example workflow">
+                Example
+              </button>
+              <button className="btn btn-sm btn-quiet" onClick={clearAll} disabled={nodes.length === 0} aria-label="Clear canvas" title="Remove all blocks and connections">
                 Clear
               </button>
               <button className="btn btn-icon only-narrow" onClick={() => setDrawer('inspector')} aria-label="Open inspector" title="Inspector and live data">
@@ -298,8 +410,24 @@ export function Studio() {
         <div className={`scrim ${drawer ? 'is-open' : ''}`} onClick={() => setDrawer(null)} aria-hidden="true" />
       </div>
 
+      <input ref={fileRef} type="file" accept=".json,application/json" hidden onChange={onImportFile} aria-label="Import workflow JSON file" />
+
       <Dock tab={dockTab} onTab={setDockTab} logs={sim.logs} issues={issues} nodeCount={nodes.length} onClear={sim.reset} onFocusNode={focusNode} />
 
+      {prompt && (
+        <ConfirmDialog
+          title={prompt.title}
+          message={prompt.message}
+          confirmLabel={prompt.confirmLabel}
+          danger={prompt.danger}
+          showCancel={prompt.showCancel}
+          onConfirm={() => {
+            setPrompt(null);
+            prompt.onConfirm();
+          }}
+          onClose={() => setPrompt(null)}
+        />
+      )}
       {output?.kind === 'json' && <JsonDialog json={output.json} summary={output.summary} filename={`${slug}.workflow.json`} onClose={() => setOutput(null)} />}
       {output?.kind === 'project' && <ProjectDialog files={output.files} zipName={`${slug}.zip`} onClose={() => setOutput(null)} />}
     </div>
