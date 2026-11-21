@@ -33,3 +33,6 @@ Compatibility: files from older versions must keep importing. When `WORKFLOW_VER
 
 ## Extending
 Future integration targets (ESP32/Arduino, embedded Linux, edge AI platforms, MQTT, AWS, OpenChoreo) are not implemented. The intended extension points are new entries in `blocks.ts` and new generator targets in `lib/generator.ts`.
+
+## Routing and public website
+There is no router dependency. `src/router.ts` maps `window.location.pathname` to a page (`resolveRoute`, unit tested) and `src/Link.tsx` navigates with the History API. `/` is the public homepage, `/docs` the developer documentation and `/studio` the editor; anything else shows a not-found page. `App.tsx` loads the Studio lazily (`StudioRoute.tsx`, which also owns the `@xyflow/react` CSS and provider), so the public pages do not download the editor. The Studio code itself is not touched by the website. The site lives in `src/site/` with its own `site.css`, reusing the design tokens from `index.css`; block names and descriptions on the pages are read from `blocks.ts` so they cannot drift from the app. `public/studio-preview.png` is a real screenshot of the Studio. A static host must serve `index.html` for unknown paths so that `/studio` and `/docs` work when opened directly.

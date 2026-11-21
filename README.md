@@ -48,7 +48,7 @@ npm install
 npm run dev
 ```
 
-Open the URL Vite prints, usually `http://localhost:5173`.
+Open the URL Vite prints, usually `http://localhost:5173`. The public homepage is at `/`, the workflow editor at `/studio` and the developer documentation at `/docs` (for example `http://localhost:5173/studio`).
 
 Other scripts:
 
@@ -70,6 +70,7 @@ npm run typecheck   # TypeScript only
 
 ## Documentation
 
+- The in-app documentation at `/docs`: quick start, editor, simulation, export, generation, limitations and troubleshooting
 - [ARCHITECTURE.md](ARCHITECTURE.md): code structure, data model and extension points
 - [CHANGELOG.md](CHANGELOG.md)
 - [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)
