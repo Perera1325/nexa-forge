@@ -22,3 +22,19 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local backups and temporary files
+.nexa-src-backup/
+*.bak
+*.orig
+*.rej
+*.tmp
+*~
+
+# Local backups and temporary files
+.nexa-src-backup/
+*.bak
+*.orig
+*.rej
+*.tmp
+*~
